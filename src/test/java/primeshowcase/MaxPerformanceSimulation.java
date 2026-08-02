@@ -9,7 +9,12 @@ import java.time.Duration;
 public class MaxPerformanceSimulation extends Simulation {
 
     HttpProtocolBuilder httpProtocol = http
-            .baseUrl("https://www.primefaces.org");
+            .baseUrl("https://www.primefaces.org")
+            .acceptHeader("text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+            .acceptLanguageHeader("en-US,en;q=0.5")
+            .acceptEncodingHeader("gzip, deflate")
+            .userAgentHeader("Mozilla/5.0 (Windows NT 10.0; Win64; x64) Firefox/120.0")
+            .silentResources();
 
     // Наш сценарий логина (тот же)
     ScenarioBuilder loginScenario = scenario("Login Test")
