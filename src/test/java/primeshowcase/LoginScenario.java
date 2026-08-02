@@ -10,6 +10,78 @@ public final class LoginScenario {
 
     private LoginScenario() {}
 
+    /**
+     * Шаг 1: GET страницы логина.
+     * Теперь обрабатывает не только 429, но и таймауты.
+     */
+    public static ChainBuilder getLoginPage() {
+        return exec(
+                http("GET Login Page")
+                        .get("/showcase/ui/misc/login.xhtml")
+                        // Запрос может упасть не только по статусу, но и по таймауту
+                        .check(
+                                status().validate(
+                                        (response, session) -> {
+                                            int code = response.status().code();
+
+                                            if (code == 200) {
+                                                String body = response.body().string();
+                                                String viewState = extractViewState(body);
+
+                                                if (viewState == null || viewState.isEmpty()) {
+                                                    throw new RuntimeException("ViewState не найден");
+                                                }
+
+                                                RateLimitCounter.recordSuccess();
+                                                return session
+                                                        .set("loginStatus", "SUCCESS")
+                                                        .set("viewState", viewState)
+                                                        .set("rateLimited", false);
+
+                                            } else if (code == 429) {
+                                                RateLimitCounter.recordRateLimit();
+                                                return session
+                                                        .set("loginStatus", "RATE_LIMITED")
+                                                        .set("viewState", "")
+                                                        .set("rateLimited", true);
+
+                                            } else {
+                                                throw new RuntimeException(
+                                                        "Неожиданный статус: " + code
+                                                );
+                                            }
+                                        }
+                                )
+                        )
+        )
+                // ===== ОБРАБОТКА ИСКЛЮЧЕНИЙ (таймаутов) =====
+                .exec(session -> {
+                    // Если предыдущий exec упал с исключением,
+                    // Gatling помечает сессию как failed.
+                    // Проверяем статус сессии:
+                    if (session.isFailed()) {
+                        String error = session.getAs("errorMessage");
+                        System.err.printf("[TIMEOUT] GET Login Page: %s%n", error);
+
+                        RateLimitCounter.recordTimeout();  // отдельный счётчик таймаутов
+
+                        // Сбрасываем failed-статус, чтобы сценарий продолжился
+                        // (пользователь завершится, но не "зависнет")
+                        return session
+                                .set("loginStatus", "TIMEOUT")
+                                .set("viewState", "")
+                                .set("rateLimited", true)   // помечаем как "неуспех"
+                                .markAsSucceeded();          // СБРАСЫВАЕМ FAILED!
+                    }
+                    return session;
+                });
+    }
+
+
+
+
+
+
     // ===== Ключевые проверки =====
 
     /**
